@@ -12,14 +12,17 @@ import {
   Linking,
   TouchableOpacity,
 } from 'react-native';
+import { getCuratedImages, getTodayTopic, TOPICS } from './services/nasaLibrary';
 
 const { width } = Dimensions.get('window');
 
 export default function App() {
   const [apod, setApod] = useState(null);
+  const [curatedImages, setCuratedImages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingCurated, setLoadingCurated] = useState(true);
 
   const fetchAPOD = async () => {
     try {
@@ -42,13 +45,31 @@ export default function App() {
     }
   };
 
+  const fetchCuratedImages = async () => {
+    try {
+      setLoadingCurated(true);
+      const images = await getCuratedImages();
+      setCuratedImages(images);
+    } catch (err) {
+      console.error('Error fetching curated images:', err);
+    } finally {
+      setLoadingCurated(false);
+    }
+  };
+
+  const loadData = async () => {
+    await Promise.all([fetchAPOD(), fetchCuratedImages()]);
+    setLoading(false);
+  };
+
   useEffect(() => {
-    fetchAPOD();
+    loadData();
   }, []);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchAPOD();
+    fetchCuratedImages();
   }, []);
 
   const formatDate = (dateString) => {
@@ -61,9 +82,9 @@ export default function App() {
     });
   };
 
-  const openHDImage = () => {
-    if (apod?.hdurl) {
-      Linking.openURL(apod.hdurl);
+  const openHDImage = (url) => {
+    if (url) {
+      Linking.openURL(url);
     }
   };
 
@@ -77,7 +98,7 @@ export default function App() {
     );
   }
 
-  if (error) {
+  if (error && !apod) {
     return (
       <View style={styles.centerContainer}>
         <StatusBar barStyle="light-content" />
@@ -92,6 +113,7 @@ export default function App() {
   }
 
   const isVideo = apod?.media_type === 'video';
+  const todayTopic = getTodayTopic();
 
   return (
     <View style={styles.container}>
@@ -114,6 +136,9 @@ export default function App() {
           <Text style={styles.headerSubtitle}>Astronomy Picture of the Day</Text>
         </View>
 
+        {/* APOD Section */}
+        <Text style={styles.sectionTitle}>Picture of the Day</Text>
+        
         {/* Image/Video */}
         {isVideo ? (
           <TouchableOpacity
@@ -126,7 +151,7 @@ export default function App() {
             </View>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity onPress={openHDImage} activeOpacity={0.9}>
+          <TouchableOpacity onPress={() => openHDImage(apod?.hdurl || apod?.url)} activeOpacity={0.9}>
             <Image
               source={{ uri: apod?.url }}
               style={styles.image}
@@ -140,7 +165,7 @@ export default function App() {
           </TouchableOpacity>
         )}
 
-        {/* Content */}
+        {/* APOD Content */}
         <View style={styles.content}>
           <Text style={styles.title}>{apod?.title}</Text>
           <Text style={styles.date}>{formatDate(apod?.date)}</Text>
@@ -153,6 +178,64 @@ export default function App() {
           
           <Text style={styles.explanation}>{apod?.explanation}</Text>
         </View>
+
+        {/* Curated Gallery Section */}
+        <View style={styles.curatedSection}>
+          <Text style={styles.sectionTitle}>Curated Astrophysics</Text>
+          <Text style={styles.topicLabel}>Today's Topic: {todayTopic}</Text>
+          
+          {loadingCurated ? (
+            <View style={styles.curatedLoading}>
+              <ActivityIndicator size="small" color="#4A90D9" />
+              <Text style={styles.curatedLoadingText}>Loading gallery...</Text>
+            </View>
+          ) : curatedImages.length > 0 ? (
+            <View style={styles.galleryGrid}>
+              {curatedImages.map((image, index) => (
+                <TouchableOpacity 
+                  key={image.id || index}
+                  style={styles.galleryItem}
+                  onPress={() => openHDImage(image.hdurl || image.url)}
+                  activeOpacity={0.9}
+                >
+                  <Image
+                    source={{ uri: image.localPath || image.url }}
+                    style={styles.galleryImage}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.galleryOverlay}>
+                    <Text style={styles.galleryTitle} numberOfLines={2}>
+                      {image.title}
+                    </Text>
+                    {image.photographer && (
+                      <Text style={styles.galleryPhotographer}>
+                        📷 {image.photographer}
+                      </Text>
+                    )}
+                    {image.location && (
+                      <Text style={styles.galleryLocation}>
+                        📍 {image.location}
+                      </Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.noCurated}>
+              <Text style={styles.noCuratedText}>
+                No curated images available. Pull to refresh.
+              </Text>
+            </View>
+          )}
+          
+          <Text style={styles.galleryFooter}>
+            Images from NASA Image Library • {new Date().getFullYear()}
+          </Text>
+        </View>
+
+        {/* Bottom padding */}
+        <View style={styles.bottomPadding} />
       </ScrollView>
     </View>
   );
@@ -161,11 +244,11 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0D21',
+    backgroundColor: '#000000',
   },
   centerContainer: {
     flex: 1,
-    backgroundColor: '#0B0D21',
+    backgroundColor: '#000000',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -177,7 +260,7 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 20,
     alignItems: 'center',
-    backgroundColor: '#0B0D21',
+    backgroundColor: '#000000',
   },
   headerEmoji: {
     fontSize: 40,
@@ -193,6 +276,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#8B93A7',
     marginTop: 4,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 12,
+  },
+  topicLabel: {
+    fontSize: 13,
+    color: '#4A90D9',
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    fontStyle: 'italic',
   },
   image: {
     width: width,
@@ -261,6 +359,79 @@ const styles = StyleSheet.create({
     color: '#C5CAD9',
     lineHeight: 26,
     textAlign: 'justify',
+  },
+  // Curated Gallery Styles
+  curatedSection: {
+    paddingTop: 10,
+    paddingBottom: 0,
+  },
+  galleryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 12,
+  },
+  galleryItem: {
+    width: (width - 36) / 2,
+    height: (width - 36) / 2 * 1.2,
+    margin: 6,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#1A1D35',
+  },
+  galleryImage: {
+    width: '100%',
+    height: '100%',
+  },
+  galleryOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    padding: 8,
+  },
+  galleryTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  galleryPhotographer: {
+    fontSize: 10,
+    color: '#8B93A7',
+  },
+  galleryLocation: {
+    fontSize: 10,
+    color: '#8B93A7',
+  },
+  curatedLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 30,
+  },
+  curatedLoadingText: {
+    color: '#8B93A7',
+    marginLeft: 10,
+    fontSize: 14,
+  },
+  noCurated: {
+    padding: 30,
+    alignItems: 'center',
+  },
+  noCuratedText: {
+    color: '#8B93A7',
+    fontSize: 14,
+  },
+  galleryFooter: {
+    fontSize: 11,
+    color: '#4A5568',
+    textAlign: 'center',
+    paddingTop: 16,
+    paddingBottom: 10,
+  },
+  bottomPadding: {
+    height: 40,
   },
   loadingText: {
     color: '#8B93A7',
