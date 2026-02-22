@@ -12,75 +12,34 @@ import {
   Linking,
   TouchableOpacity,
 } from 'react-native';
-import { getCuratedImages, getTodayTopic, TOPICS } from './services/nasaLibrary';
+import { getCuratedImages, getTodayTopic } from './services/nasaLibrary';
 
 const { width } = Dimensions.get('window');
 
 export default function App() {
-  const [apod, setApod] = useState(null);
   const [curatedImages, setCuratedImages] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [loadingCurated, setLoadingCurated] = useState(true);
-
-  const fetchAPOD = async () => {
-    try {
-      setError(null);
-      const response = await fetch(
-        'https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY'
-      );
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch APOD');
-      }
-      
-      const data = await response.json();
-      setApod(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
 
   const fetchCuratedImages = async () => {
     try {
-      setLoadingCurated(true);
       const images = await getCuratedImages();
       setCuratedImages(images);
     } catch (err) {
       console.error('Error fetching curated images:', err);
     } finally {
-      setLoadingCurated(false);
+      setLoading(false);
     }
   };
 
-  const loadData = async () => {
-    await Promise.all([fetchAPOD(), fetchCuratedImages()]);
-    setLoading(false);
-  };
-
   useEffect(() => {
-    loadData();
+    fetchCuratedImages();
   }, []);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchAPOD();
-    fetchCuratedImages();
+    fetchCuratedImages().then(() => setRefreshing(false));
   }, []);
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
 
   const openHDImage = (url) => {
     if (url) {
@@ -98,21 +57,6 @@ export default function App() {
     );
   }
 
-  if (error && !apod) {
-    return (
-      <View style={styles.centerContainer}>
-        <StatusBar barStyle="light-content" />
-        <Text style={styles.errorEmoji}>🌌</Text>
-        <Text style={styles.errorText}>Houston, we have a problem</Text>
-        <Text style={styles.errorDetail}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={fetchAPOD}>
-          <Text style={styles.retryText}>Try Again</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  const isVideo = apod?.media_type === 'video';
   const todayTopic = getTodayTopic();
 
   return (
@@ -132,64 +76,16 @@ export default function App() {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerEmoji}>🌌</Text>
-          <Text style={styles.headerTitle}>NASA APOD</Text>
-          <Text style={styles.headerSubtitle}>Astronomy Picture of the Day</Text>
-        </View>
-
-        {/* APOD Section */}
-        <Text style={styles.sectionTitle}>Picture of the Day</Text>
-        
-        {/* Image/Video */}
-        {isVideo ? (
-          <TouchableOpacity
-            style={styles.videoContainer}
-            onPress={() => Linking.openURL(apod.url)}
-          >
-            <View style={styles.videoPlaceholder}>
-              <Text style={styles.videoIcon}>▶️</Text>
-              <Text style={styles.videoText}>Tap to watch video</Text>
-            </View>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity onPress={() => openHDImage(apod?.hdurl || apod?.url)} activeOpacity={0.9}>
-            <Image
-              source={{ uri: apod?.url }}
-              style={styles.image}
-              resizeMode="cover"
-            />
-            {apod?.hdurl && (
-              <View style={styles.hdBadge}>
-                <Text style={styles.hdText}>HD</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        )}
-
-        {/* APOD Content */}
-        <View style={styles.content}>
-          <Text style={styles.title}>{apod?.title}</Text>
-          <Text style={styles.date}>{formatDate(apod?.date)}</Text>
-          
-          {apod?.copyright && (
-            <Text style={styles.copyright}>© {apod.copyright}</Text>
-          )}
-          
-          <View style={styles.divider} />
-          
-          <Text style={styles.explanation}>{apod?.explanation}</Text>
+          <Text style={styles.headerTitle}>SpaceView</Text>
+          <Text style={styles.headerSubtitle}>Daily Astrophotography</Text>
         </View>
 
         {/* Curated Gallery Section */}
         <View style={styles.curatedSection}>
-          <Text style={styles.sectionTitle}>Curated Astrophysics</Text>
-          <Text style={styles.topicLabel}>Today's Topic: {todayTopic}</Text>
+          <Text style={styles.sectionTitle}>Today's Collection</Text>
+          <Text style={styles.topicLabel}>Topic: {todayTopic}</Text>
           
-          {loadingCurated ? (
-            <View style={styles.curatedLoading}>
-              <ActivityIndicator size="small" color="#4A90D9" />
-              <Text style={styles.curatedLoadingText}>Loading gallery...</Text>
-            </View>
-          ) : curatedImages.length > 0 ? (
+          {curatedImages.length > 0 ? (
             <View style={styles.galleryGrid}>
               {curatedImages.map((image, index) => (
                 <TouchableOpacity 
@@ -224,7 +120,7 @@ export default function App() {
           ) : (
             <View style={styles.noCurated}>
               <Text style={styles.noCuratedText}>
-                No curated images available. Pull to refresh.
+                No images available. Pull to refresh.
               </Text>
             </View>
           )}
@@ -292,74 +188,6 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     fontStyle: 'italic',
   },
-  image: {
-    width: width,
-    height: width * 0.75,
-    backgroundColor: '#1A1D35',
-  },
-  videoContainer: {
-    width: width,
-    height: width * 0.75,
-    backgroundColor: '#1A1D35',
-  },
-  videoPlaceholder: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  videoIcon: {
-    fontSize: 60,
-    marginBottom: 10,
-  },
-  videoText: {
-    color: '#8B93A7',
-    fontSize: 16,
-  },
-  hdBadge: {
-    position: 'absolute',
-    bottom: 10,
-    right: 10,
-    backgroundColor: 'rgba(74, 144, 217, 0.9)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  hdText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  content: {
-    padding: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 8,
-    lineHeight: 32,
-  },
-  date: {
-    fontSize: 14,
-    color: '#4A90D9',
-    marginBottom: 4,
-  },
-  copyright: {
-    fontSize: 12,
-    color: '#8B93A7',
-    fontStyle: 'italic',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#2A2D45',
-    marginVertical: 20,
-  },
-  explanation: {
-    fontSize: 16,
-    color: '#C5CAD9',
-    lineHeight: 26,
-    textAlign: 'justify',
-  },
   // Curated Gallery Styles
   curatedSection: {
     paddingTop: 10,
@@ -404,17 +232,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#8B93A7',
   },
-  curatedLoading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 30,
-  },
-  curatedLoadingText: {
-    color: '#8B93A7',
-    marginLeft: 10,
-    fontSize: 14,
-  },
   noCurated: {
     padding: 30,
     alignItems: 'center',
@@ -437,32 +254,5 @@ const styles = StyleSheet.create({
     color: '#8B93A7',
     marginTop: 16,
     fontSize: 16,
-  },
-  errorEmoji: {
-    fontSize: 60,
-    marginBottom: 16,
-  },
-  errorText: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  errorDetail: {
-    color: '#8B93A7',
-    fontSize: 14,
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  retryButton: {
-    backgroundColor: '#4A90D9',
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 25,
-  },
-  retryText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
   },
 });
