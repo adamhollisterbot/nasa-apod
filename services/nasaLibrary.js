@@ -1,11 +1,13 @@
 // NASA Image Library API Service
 // API: https://images-api.nasa.gov/search?q={topic}&media_type=image
 
-import * as FileSystem from 'expo-file-system';
+import { File, Directory, Paths } from 'expo-file-system';
 
 const TOPICS = ['james webb', 'nebula', 'black hole', 'deep field', 'planets', 'galaxy'];
-const IMAGE_DIR = `${FileSystem.documentDirectory}cached_images/`;
-const METADATA_FILE = `${FileSystem.documentDirectory}image_metadata.json`;
+
+// Get paths
+const getImageDir = () => new Directory(Paths.cache, 'cached_images');
+const getMetadataFile = () => new File(Paths.cache, 'image_metadata.json');
 
 // Get today's topic based on the date (cycles through topics)
 const getTodayTopic = () => {
@@ -31,8 +33,7 @@ export const fetchNASALibraryImages = async (topic = null, count = 2) => {
     const validImages = (data.collection?.items || []).filter(item => {
       const hasImage = item.data?.[0]?.media_type === 'image';
       const hasDescription = item.data?.[0]?.description?.length > 50;
-      const hasLocation = item.data?.[0]?.location;
-      // Prefer images with location data or longer descriptions
+      // Prefer images with longer descriptions
       return hasImage && hasDescription;
     });
     
@@ -47,10 +48,10 @@ export const fetchNASALibraryImages = async (topic = null, count = 2) => {
       photographer: item.data[0].photographer || item.data[0].secondary_creator,
       // Get the best quality image URL
       url: item.links?.find(l => l.rel === 'preview')?.href || 
-           item.links?.[0?.href] || '',
+           item.links?.[0]?.href || '',
       // Use the higher resolution image if available
       hdurl: item.links?.find(l => l.rel === 'original')?.href || 
-             item.links?.[0?.href] || '',
+             item.links?.[0]?.href || '',
     }));
   } catch (error) {
     console.error('Error fetching NASA Image Library:', error);
@@ -61,15 +62,15 @@ export const fetchNASALibraryImages = async (topic = null, count = 2) => {
 // Initialize the image directory
 export const initImageCache = async () => {
   try {
-    const dirInfo = await FileSystem.getInfoAsync(IMAGE_DIR);
-    if (!dirInfo.exists) {
-      await FileSystem.makeDirectoryAsync(IMAGE_DIR, { intermediates: true });
+    const imageDir = getImageDir();
+    if (!imageDir.exists) {
+      imageDir.create();
     }
     
     // Initialize metadata if doesn't exist
-    const metaInfo = await FileSystem.getInfoAsync(METADATA_FILE);
-    if (!metaInfo.exists) {
-      await FileSystem.writeAsStringAsync(METADATA_FILE, JSON.stringify({
+    const metaFile = getMetadataFile();
+    if (!metaFile.exists) {
+      metaFile.write(JSON.stringify({
         lastFetchDate: null,
         images: []
       }));
@@ -82,9 +83,9 @@ export const initImageCache = async () => {
 // Get cached images metadata
 export const getCachedImagesMeta = async () => {
   try {
-    const metaInfo = await FileSystem.getInfoAsync(METADATA_FILE);
-    if (metaInfo.exists) {
-      const content = await FileSystem.readAsStringAsync(METADATA_FILE);
+    const metaFile = getMetadataFile();
+    if (metaFile.exists) {
+      const content = metaFile.textSync();
       return JSON.parse(content);
     }
   } catch (error) {
@@ -96,7 +97,8 @@ export const getCachedImagesMeta = async () => {
 // Save images metadata
 export const saveCachedImagesMeta = async (metadata) => {
   try {
-    await FileSystem.writeAsStringAsync(METADATA_FILE, JSON.stringify(metadata));
+    const metaFile = getMetadataFile();
+    metaFile.write(JSON.stringify(metadata));
   } catch (error) {
     console.error('Error saving metadata:', error);
   }
@@ -110,31 +112,47 @@ const getTodayDateString = () => {
 // Download and cache images
 export const cacheImages = async (images) => {
   const cachedImages = [];
+  const imageDir = getImageDir();
+  
+  // Ensure directory exists
+  if (!imageDir.exists) {
+    imageDir.create();
+  }
   
   for (const image of images) {
     if (!image.url) continue;
     
     const filename = `${image.id}.jpg`;
-    const localPath = `${IMAGE_DIR}${filename}`;
+    const localFile = new File(imageDir, filename);
     
     try {
-      const fileInfo = await FileSystem.getInfoAsync(localPath);
-      
-      if (!fileInfo.exists) {
+      if (!localFile.exists) {
         console.log(`Caching image: ${image.title}`);
-        const downloadResult = await FileSystem.downloadAsync(image.url, localPath);
-        if (downloadResult.status !== 200) {
-          console.error(`Failed to download: ${image.url}`);
+        // Download using File.downloadFileAsync (SDK 54 recommended approach)
+        try {
+          await File.downloadFileAsync(image.url, localFile);
+        } catch (downloadError) {
+          console.error(`Failed to download: ${image.url}`, downloadError);
+          // Fall back to using URL directly
+          cachedImages.push({
+            ...image,
+            localPath: image.url,
+          });
           continue;
         }
       }
       
       cachedImages.push({
         ...image,
-        localPath: localPath,
+        localPath: localFile.uri,
       });
     } catch (error) {
       console.error(`Error caching image ${image.title}:`, error);
+      // Still add image with remote URL as fallback
+      cachedImages.push({
+        ...image,
+        localPath: image.url,
+      });
     }
   }
   
