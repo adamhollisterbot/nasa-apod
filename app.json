@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "NASA APOD",
-    "slug": "nasa-apod",
+    "name": "SpaceView",
+    "slug": "spaceview",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,14 +13,14 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.miniapps.nasaapod"
+      "bundleIdentifier": "com.miniapps.spaceview"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0B0D21"
       },
-      "package": "com.miniapps.nasaapod"
+      "package": "com.miniapps.spaceview"
     },
     "web": {
       "favicon": "./assets/favicon.png"
